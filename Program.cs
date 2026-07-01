@@ -120,33 +120,8 @@ app.MapPost("/api/khachhang", async (KhachHang model) =>
     }
 });
 
-// 4. API LẤY DANH SÁCH VAI TRÒ (Dùng cho giao diện Flutter hiển thị)
-app.MapGet("/api/vaitro", async (AppDbContext context) =>
-{
-    try
-    {
-        // Lấy danh sách vai trò kèm danh sách quyền tương ứng của vai trò đó
-        var danhSachVaiTro = await context.VaiTros
-            .Select(v => new
-            {
-                id = v.Id,
-                tenVaiTro = v.TenVaiTro,
-                moTa = v.MoTa,
-                // Lấy danh sách các ModuleCode thuộc vai trò này từ bảng vaitro_quyen
-                permissions = context.VaiTroQuyens
-                    .Where(vq => vq.VaiTroId == v.Id)
-                    .Select(vq => vq.ModuleCode)
-                    .ToList()
-            })
-            .ToListAsync();
-
-        return Results.Ok(danhSachVaiTro);
-    }
-    catch (Exception ex)
-    {
-        return Results.InternalServerError(new { message = $"Lỗi lấy danh sách vai trò: {ex.Message}" });
-    }
-});
+// Ghi chú: API vai trò/phân quyền đã được chuyển sang Controllers/RolesController.cs
+// (đường dẫn /api/roles) để khớp với giao diện Flutter (vai_tro_sub.dart).
 
 await DbInitializer.SeedDataAsync(app);
 
