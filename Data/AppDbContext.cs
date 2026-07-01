@@ -7,13 +7,17 @@ public class AppDbContext : DbContext
     public DbSet<NguoiDung> NguoiDungs { get; set; }
     public DbSet<VaiTro> VaiTros { get; set; }
     public DbSet<NguoiDungVaiTro> NguoiDungVaiTros { get; set; }
+    public DbSet<VaiTroQuyen> VaiTroQuyens { get; set; } // <-- THÊM DÒNG NÀY
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
 
-        // Khai báo Composite Primary Key cho bảng trung gian đúng cấu trúc SQL của bạn
         modelBuilder.Entity<NguoiDungVaiTro>()
             .HasKey(nv => new { nv.NguoiDungId, nv.VaiTroId });
+
+        // THÊM: Composite key cho VaiTroQuyen
+        modelBuilder.Entity<VaiTroQuyen>()
+            .HasKey(vq => new { vq.VaiTroId, vq.ModuleCode });
     }
 }
