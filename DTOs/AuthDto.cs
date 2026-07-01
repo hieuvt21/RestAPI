@@ -11,3 +11,16 @@ public class LoginDto
     public string TenDangNhap { get; set; } = null!;
     public string MatKhau { get; set; } = null!;
 }
+
+public class UpdateProfileDto
+{
+    public int Id { get; set; }
+    public string HoTen { get; set; } = null!;
+}
+
+public class ChangePasswordDto
+{
+    public int Id { get; set; }
+    public string MatKhauCu { get; set; } = null!;
+    public string MatKhauMoi { get; set; } = null!;
+}

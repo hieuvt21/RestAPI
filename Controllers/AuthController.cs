@@ -22,13 +22,11 @@ public class AuthController : ControllerBase
     [HttpPost("register")]
     public async Task<IActionResult> Register([FromBody] RegisterDto dto)
     {
-        // Kiểm tra xem tên đăng nhập đã tồn tại chưa
         if (await _context.NguoiDungs.AnyAsync(u => u.TenDangNhap == dto.TenDangNhap))
         {
             return BadRequest(new { message = "Tên đăng nhập đã tồn tại!" });
         }
 
-        // BĂM MẬT KHẨU: Biến chuỗi thường thành mã Hash bảo mật không thể dịch ngược
         string passwordHash = BCrypt.Net.BCrypt.HashPassword(dto.MatKhau);
 
         var newUser = new NguoiDung
@@ -40,9 +38,8 @@ public class AuthController : ControllerBase
         };
 
         _context.NguoiDungs.Add(newUser);
-        await _context.SaveChangesAsync(); // Lưu để lấy được ID tự tăng của User
+        await _context.SaveChangesAsync();
 
-        // Gán quyền cho User vào bảng trung gian
         var userRole = new NguoiDungVaiTro
         {
             NguoiDungId = newUser.Id,
@@ -58,21 +55,18 @@ public class AuthController : ControllerBase
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginDto dto)
     {
-        // Tìm người dùng theo tên đăng nhập
         var user = await _context.NguoiDungs.FirstOrDefaultAsync(u => u.TenDangNhap == dto.TenDangNhap);
         if (user == null || user.TrangThai != "1")
         {
             return Unauthorized(new { message = "Tài khoản không tồn tại hoặc đã bị khóa!" });
         }
 
-        // KIỂM TRA MẬT KHẨU: Đối chiếu mật khẩu gõ vào với chuỗi mã hash trong DB
         bool isPasswordValid = BCrypt.Net.BCrypt.Verify(dto.MatKhau, user.MatKhauHash);
         if (!isPasswordValid)
         {
             return Unauthorized(new { message = "Mật khẩu không chính xác!" });
         }
 
-        // Lấy danh sách quyền của người dùng để nhét vào Token
         var roleIds = await _context.NguoiDungVaiTros
             .Where(ur => ur.NguoiDungId == user.Id)
             .Select(ur => ur.VaiTroId)
@@ -83,7 +77,6 @@ public class AuthController : ControllerBase
             .Select(r => r.TenVaiTro)
             .ToListAsync();
 
-        // TẠO CHUỖI JWT TOKEN
         var token = GenerateJwtToken(user, roles);
 
         return Ok(new
@@ -93,6 +86,34 @@ public class AuthController : ControllerBase
         });
     }
 
+    // 3. API THAY ĐỔI THÔNG TIN TÀI KHOẢN
+    [HttpPut("update-profile")]
+    public async Task<IActionResult> UpdateProfile([FromBody] UpdateProfileDto dto)
+    {
+        var user = await _context.NguoiDungs.FindAsync(dto.Id);
+        if (user == null) return NotFound(new { message = "Không tìm thấy người dùng." });
+
+        user.HoTen = dto.HoTen;
+        await _context.SaveChangesAsync();
+        return Ok(new { message = "Cập nhật thành công.", hoTen = user.HoTen });
+    }
+
+    // 4. API ĐỔI MẬT KHẨU
+    [HttpPut("change-password")]
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordDto dto)
+    {
+        var user = await _context.NguoiDungs.FindAsync(dto.Id);
+        if (user == null) return NotFound(new { message = "Không tìm thấy người dùng." });
+
+        if (!BCrypt.Net.BCrypt.Verify(dto.MatKhauCu, user.MatKhauHash))
+            return BadRequest(new { message = "Mật khẩu cũ không đúng." });
+
+        user.MatKhauHash = BCrypt.Net.BCrypt.HashPassword(dto.MatKhauMoi);
+        await _context.SaveChangesAsync();
+        return Ok(new { message = "Đổi mật khẩu thành công." });
+    }
+
+    // HÀM BỔ TRỢ TẠO JWT TOKEN
     private string GenerateJwtToken(NguoiDung user, List<string> roles)
     {
         var claims = new List<Claim>
@@ -102,20 +123,18 @@ public class AuthController : ControllerBase
             new Claim("HoTen", user.HoTen)
         };
 
-        // Thêm các quyền (Roles) vào danh sách Claims định danh
         foreach (var role in roles)
         {
             claims.Add(new Claim(ClaimTypes.Role, role));
         }
 
-        // Lấy Secret Key khai báo trong appsettings.json
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"] ?? "Key_Bi_Mat_Sieu_Dai_Toi_Thieu_32_Ky_Tu_Nhe_Ban"));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
         var tokenDescriptor = new SecurityTokenDescriptor
         {
             Subject = new ClaimsIdentity(claims),
-            Expires = DateTime.UtcNow.AddDays(7), // Token có giá trị trong 7 ngày
+            Expires = DateTime.UtcNow.AddDays(7),
             SigningCredentials = creds,
             Issuer = _configuration["Jwt:Issuer"],
             Audience = _configuration["Jwt:Audience"]
