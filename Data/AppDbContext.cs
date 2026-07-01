@@ -12,7 +12,10 @@ public class AppDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
-
+        modelBuilder.Entity<VaiTroQuyen>()
+        .HasKey(vq => new { vq.VaiTroId, vq.ModuleCode });
+        modelBuilder.Entity<NguoiDungVaiTro>()
+        .HasKey(nv => new { nv.NguoiDungId, nv.VaiTroId });
         modelBuilder.Entity<NguoiDungVaiTro>()
             .HasKey(nv => new { nv.NguoiDungId, nv.VaiTroId });
 
@@ -20,4 +23,5 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<VaiTroQuyen>()
             .HasKey(vq => new { vq.VaiTroId, vq.ModuleCode });
     }
+
 }

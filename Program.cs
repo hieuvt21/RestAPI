@@ -53,7 +53,7 @@ app.MapControllers();
 // ===== ENDPOINT KIỂM TRA SERVER =====
 app.MapGet("/", () => "API .NET 10 đang hoạt động ở cổng 5000!");
 
-// ===== API KHÁCH HÀNG (GIỮ NGUYÊN) =====
+// ===== API KHÁCH HÀNG =====
 app.MapGet("/api/khachhang", async () =>
 {
     try
@@ -120,121 +120,35 @@ app.MapPost("/api/khachhang", async (KhachHang model) =>
     }
 });
 
-// ===== SEED DATA =====
-using (var scope = app.Services.CreateScope())
+// 4. API LẤY DANH SÁCH VAI TRÒ (Dùng cho giao diện Flutter hiển thị)
+app.MapGet("/api/vaitro", async (AppDbContext context) =>
 {
-    var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     try
     {
-        // --- Seed vai trò Admin ---
-        if (!await context.VaiTros.AnyAsync(v => v.TenVaiTro == "Admin"))
-        {
-            var adminRole = new VaiTro { TenVaiTro = "Admin", MoTa = "Toàn quyền quản trị" };
-            context.VaiTros.Add(adminRole);
-            await context.SaveChangesAsync();
-            Console.WriteLine(">>> Đã tạo vai trò Admin");
-        }
+        // Lấy danh sách vai trò kèm danh sách quyền tương ứng của vai trò đó
+        var danhSachVaiTro = await context.VaiTros
+            .Select(v => new
+            {
+                id = v.Id,
+                tenVaiTro = v.TenVaiTro,
+                moTa = v.MoTa,
+                // Lấy danh sách các ModuleCode thuộc vai trò này từ bảng vaitro_quyen
+                permissions = context.VaiTroQuyens
+                    .Where(vq => vq.VaiTroId == v.Id)
+                    .Select(vq => vq.ModuleCode)
+                    .ToList()
+            })
+            .ToListAsync();
 
-        // --- Seed tài khoản admin ---
-        if (!await context.NguoiDungs.AnyAsync(u => u.TenDangNhap == "admin"))
-        {
-            var adminUser = new NguoiDung
-            {
-                TenDangNhap = "admin",
-                MatKhauHash = BCrypt.Net.BCrypt.HashPassword("123456"),
-                HoTen = "Quản Trị Viên",
-                TrangThai = "1"
-            };
-            context.NguoiDungs.Add(adminUser);
-            await context.SaveChangesAsync();
-
-            var adminRole = await context.VaiTros.FirstAsync(v => v.TenVaiTro == "Admin");
-            context.NguoiDungVaiTros.Add(new NguoiDungVaiTro
-            {
-                NguoiDungId = adminUser.Id,
-                VaiTroId = adminRole.Id
-            });
-            await context.SaveChangesAsync();
-            Console.WriteLine(">>> Đã tạo tài khoản admin/123456");
-        }
-
-        // --- Seed 3 vai trò mặc định ---
-        var defaultRoles = new[]
-        {
-            new
-            {
-                Name = "Quản lý",
-                Desc = "Toàn quyền quản lý hệ thống trừ cài đặt hệ thống",
-                Permissions = new[]
-                {
-                    "dashboard.view",
-                    "sales.view", "sales.create",
-                    "orders.view", "orders.create", "orders.edit", "orders.delete",
-                    "products.view", "products.create", "products.edit", "products.delete",
-                    "services.view", "services.create", "services.edit", "services.delete",
-                    "customers.view", "customers.create", "customers.edit", "customers.delete",
-                    "reports.view", "reports.export"
-                }
-            },
-            new
-            {
-                Name = "Bán hàng",
-                Desc = "Thực hiện bán hàng và quản lý khách hàng cơ bản",
-                Permissions = new[]
-                {
-                    "dashboard.view",
-                    "sales.view", "sales.create",
-                    "orders.view", "orders.create",
-                    "customers.view", "customers.create"
-                }
-            },
-            new
-            {
-                Name = "Quản lý kho",
-                Desc = "Quản lý sản phẩm, dịch vụ và tồn kho",
-                Permissions = new[]
-                {
-                    "dashboard.view",
-                    "products.view", "products.create", "products.edit", "products.delete",
-                    "services.view", "services.create", "services.edit", "services.delete",
-                    "reports.view"
-                }
-            },
-        };
-
-        foreach (var r in defaultRoles)
-        {
-            if (!await context.VaiTros.AnyAsync(v => v.TenVaiTro == r.Name))
-            {
-                var newRole = new VaiTro { TenVaiTro = r.Name, MoTa = r.Desc };
-                context.VaiTros.Add(newRole);
-                await context.SaveChangesAsync();
-
-                foreach (var p in r.Permissions)
-                {
-                    context.VaiTroQuyens.Add(new VaiTroQuyen
-                    {
-                        VaiTroId = newRole.Id,
-                        ModuleCode = p
-                    });
-                }
-                await context.SaveChangesAsync();
-                Console.WriteLine($">>> Đã tạo vai trò: {r.Name} ({r.Permissions.Length} quyền)");
-            }
-            else
-            {
-                Console.WriteLine($">>> Vai trò '{r.Name}' đã tồn tại, bỏ qua.");
-            }
-        }
+        return Results.Ok(danhSachVaiTro);
     }
     catch (Exception ex)
     {
-        // In chi tiết lỗi để dễ debug
-        Console.WriteLine($"[LỖI SEED] {ex.GetType().Name}: {ex.Message}");
-        if (ex.InnerException != null)
-            Console.WriteLine($"[LỖI SEED - Inner] {ex.InnerException.Message}");
+        return Results.InternalServerError(new { message = $"Lỗi lấy danh sách vai trò: {ex.Message}" });
     }
-}
+});
+
+await DbInitializer.SeedDataAsync(app);
 
 app.Run();
 
