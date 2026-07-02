@@ -164,12 +164,15 @@ public class AccountsController : ControllerBase
                 user.MatKhauHash = BCrypt.Net.BCrypt.HashPassword(dto.MatKhauMoi);
             }
 
+            // Lưu thông tin tài khoản (họ tên / trạng thái / mật khẩu) trước
+            await _context.SaveChangesAsync();
+
             // Admin gốc luôn giữ nguyên vai trò hiện có, không cho đổi từ giao diện
             if (!isRootAdmin)
             {
-                var existingRoles = _context.NguoiDungVaiTros.Where(nv => nv.NguoiDungId == id);
-                _context.NguoiDungVaiTros.RemoveRange(existingRoles);
-                await _context.SaveChangesAsync();
+                // Dùng ExecuteDeleteAsync (bulk delete trực tiếp bằng SQL) thay vì
+                // RemoveRange + SaveChanges, để tránh lỗi optimistic concurrency.
+                await _context.NguoiDungVaiTros.Where(nv => nv.NguoiDungId == id).ExecuteDeleteAsync();
 
                 var validRoleIds = await _context.VaiTros
                     .Where(v => dto.VaiTroIds.Contains(v.Id))
@@ -184,9 +187,10 @@ public class AccountsController : ControllerBase
                         VaiTroId = roleId
                     });
                 }
-            }
 
+                if (validRoleIds.Count > 0)
             await _context.SaveChangesAsync();
+            }
 
             return Ok(new { success = true, message = "Cập nhật tài khoản thành công!" });
         }
@@ -203,17 +207,20 @@ public class AccountsController : ControllerBase
     {
         try
         {
-            var user = await _context.NguoiDungs.FindAsync(id);
+            var user = await _context.NguoiDungs.AsNoTracking().FirstOrDefaultAsync(u => u.Id == id);
             if (user == null)
                 return NotFound(new { message = "Không tìm thấy tài khoản." });
 
             if (user.TenDangNhap == "admin")
                 return BadRequest(new { message = "Không thể xóa tài khoản admin gốc." });
 
-            var roles = _context.NguoiDungVaiTros.Where(nv => nv.NguoiDungId == id);
-            _context.NguoiDungVaiTros.RemoveRange(roles);
-            _context.NguoiDungs.Remove(user);
-            await _context.SaveChangesAsync();
+            // Dùng ExecuteDeleteAsync (bulk delete trực tiếp bằng SQL) thay vì
+            // RemoveRange/Remove + SaveChanges, để tránh lỗi optimistic concurrency.
+            await _context.NguoiDungVaiTros.Where(nv => nv.NguoiDungId == id).ExecuteDeleteAsync();
+            int deletedCount = await _context.NguoiDungs.Where(u => u.Id == id).ExecuteDeleteAsync();
+
+            if (deletedCount == 0)
+                return NotFound(new { message = "Tài khoản đã bị xóa trước đó hoặc không còn tồn tại." });
 
             return Ok(new { success = true, message = "Đã xóa tài khoản thành công!" });
         }
