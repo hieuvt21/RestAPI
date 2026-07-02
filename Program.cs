@@ -61,7 +61,7 @@ app.MapGet("/api/khachhang", async () =>
         using var conn = new SqlConnection(connectionString);
         await conn.OpenAsync();
 
-        string sql = "SELECT id, ten, sdt, dia_chi, ngay_sinh, ghi_chu, trang_thai, chi_tieu FROM khach_hang ORDER BY id DESC";
+        string sql = "SELECT id, ten, sdt, dia_chi, ngay_sinh, ghi_chu, trang_thai, chi_tieu FROM khach_hang WHERE trang_thai = '1' ORDER BY id DESC";
         using var cmd = new SqlCommand(sql, conn);
         using var reader = await cmd.ExecuteReaderAsync();
 
@@ -100,8 +100,10 @@ app.MapPost("/api/khachhang", async (KhachHang model) =>
         using var conn = new SqlConnection(connectionString);
         await conn.OpenAsync();
 
+        // Trạng thái luôn được server đặt cứng là "1" (Hoạt động) khi tạo mới,
+        // không phụ thuộc vào giá trị client gửi lên.
         string sql = @"INSERT INTO khach_hang (ten, sdt, dia_chi, ngay_sinh, ghi_chu, trang_thai)
-                       VALUES (@ten, @sdt, @dia_chi, @ngay_sinh, @ghi_chu, @trang_thai)";
+                       VALUES (@ten, @sdt, @dia_chi, @ngay_sinh, @ghi_chu, '1')";
         using var cmd = new SqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("@ten", model.ten);
         cmd.Parameters.AddWithValue("@sdt", model.sdt ?? (object)DBNull.Value);
@@ -109,10 +111,70 @@ app.MapPost("/api/khachhang", async (KhachHang model) =>
         cmd.Parameters.AddWithValue("@ngay_sinh", model.ngay_sinh.HasValue
                                                     ? model.ngay_sinh.Value : (object)DBNull.Value);
         cmd.Parameters.AddWithValue("@ghi_chu", model.ghi_chu ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@trang_thai", model.trang_thai ?? (object)DBNull.Value);
 
         await cmd.ExecuteNonQueryAsync();
         return Results.Ok(new { success = true, message = "Thêm khách hàng thành công!" });
+    }
+    catch (Exception ex)
+    {
+        return Results.InternalServerError(new { message = ex.Message });
+    }
+});
+
+// ===== API SỬA THÔNG TIN KHÁCH HÀNG =====
+app.MapPut("/api/khachhang/{id:int}", async (int id, UpdateKhachHangDto model) =>
+{
+    if (string.IsNullOrWhiteSpace(model.ten))
+        return Results.BadRequest(new { message = "Tên khách hàng là bắt buộc." });
+
+    try
+    {
+        using var conn = new SqlConnection(connectionString);
+        await conn.OpenAsync();
+
+        string sql = @"UPDATE khach_hang
+                       SET ten = @ten, sdt = @sdt, dia_chi = @dia_chi,
+                           ngay_sinh = @ngay_sinh, ghi_chu = @ghi_chu
+                       WHERE id = @id AND trang_thai = '1'";
+        using var cmd = new SqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("@id", id);
+        cmd.Parameters.AddWithValue("@ten", model.ten);
+        cmd.Parameters.AddWithValue("@sdt", model.sdt ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@dia_chi", model.dia_chi ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@ngay_sinh", model.ngay_sinh.HasValue
+                                                    ? model.ngay_sinh.Value : (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@ghi_chu", model.ghi_chu ?? (object)DBNull.Value);
+
+        int affected = await cmd.ExecuteNonQueryAsync();
+        if (affected == 0)
+            return Results.NotFound(new { message = "Không tìm thấy khách hàng." });
+
+        return Results.Ok(new { success = true, message = "Cập nhật khách hàng thành công!" });
+    }
+    catch (Exception ex)
+    {
+        return Results.InternalServerError(new { message = ex.Message });
+    }
+});
+
+// ===== API XÓA (MỀM) KHÁCH HÀNG =====
+// Không xóa vật lý khỏi DB, chỉ chuyển trang_thai về '0' để ẩn khỏi danh sách.
+app.MapDelete("/api/khachhang/{id:int}", async (int id) =>
+{
+    try
+    {
+        using var conn = new SqlConnection(connectionString);
+        await conn.OpenAsync();
+
+        string sql = "UPDATE khach_hang SET trang_thai = '0' WHERE id = @id AND trang_thai = '1'";
+        using var cmd = new SqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("@id", id);
+
+        int affected = await cmd.ExecuteNonQueryAsync();
+        if (affected == 0)
+            return Results.NotFound(new { message = "Không tìm thấy khách hàng hoặc đã bị xóa trước đó." });
+
+        return Results.Ok(new { success = true, message = "Đã xóa khách hàng thành công!" });
     }
     catch (Exception ex)
     {
@@ -136,4 +198,12 @@ public record KhachHang(
     string? ghi_chu,
     string? trang_thai,
     decimal? chi_tieu
+);
+
+public record UpdateKhachHangDto(
+    string ten,
+    string? sdt,
+    string? dia_chi,
+    DateTime? ngay_sinh,
+    string? ghi_chu
 );
