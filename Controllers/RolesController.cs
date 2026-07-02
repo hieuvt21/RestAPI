@@ -94,17 +94,16 @@ public class RolesController : ControllerBase
     {
         try
         {
-            var role = await _context.VaiTros.FindAsync(id);
+            var role = await _context.VaiTros.AsNoTracking().FirstOrDefaultAsync(v => v.Id == id);
             if (role == null)
                 return NotFound(new { message = "Không tìm thấy vai trò." });
 
             if (role.TenVaiTro == "Admin")
                 return BadRequest(new { message = "Không thể chỉnh sửa quyền của vai trò Admin." });
 
-            // Xóa toàn bộ quyền cũ của vai trò này
-            var existingQuyens = _context.VaiTroQuyens.Where(q => q.VaiTroId == id);
-            _context.VaiTroQuyens.RemoveRange(existingQuyens);
-            await _context.SaveChangesAsync();
+            // Xóa toàn bộ quyền cũ bằng ExecuteDeleteAsync (bulk delete trực tiếp bằng SQL)
+            // để tránh lỗi optimistic concurrency của EF change-tracking.
+            await _context.VaiTroQuyens.Where(q => q.VaiTroId == id).ExecuteDeleteAsync();
 
             // Thêm lại danh sách quyền mới (loại trùng)
             var moduleList = dto.Modules?.Distinct().ToList() ?? new List<string>();
@@ -118,7 +117,8 @@ public class RolesController : ControllerBase
                 });
             }
 
-            await _context.SaveChangesAsync();
+            if (moduleList.Count > 0)
+                await _context.SaveChangesAsync();
 
             return Ok(new { success = true, message = "Đã lưu phân quyền thành công!" });
         }
@@ -135,7 +135,7 @@ public class RolesController : ControllerBase
     {
         try
         {
-            var role = await _context.VaiTros.FindAsync(id);
+            var role = await _context.VaiTros.AsNoTracking().FirstOrDefaultAsync(v => v.Id == id);
             if (role == null)
                 return NotFound(new { message = "Không tìm thấy vai trò." });
 
@@ -146,10 +146,15 @@ public class RolesController : ControllerBase
             if (dangSuDung)
                 return BadRequest(new { message = "Vai trò đang được gán cho tài khoản, không thể xóa." });
 
-            var quyens = _context.VaiTroQuyens.Where(q => q.VaiTroId == id);
-            _context.VaiTroQuyens.RemoveRange(quyens);
-            _context.VaiTros.Remove(role);
-            await _context.SaveChangesAsync();
+            // Dùng ExecuteDeleteAsync (bulk delete trực tiếp bằng SQL) thay vì
+            // RemoveRange/Remove + SaveChanges, để tránh lỗi optimistic concurrency
+            // (EF luôn kỳ vọng đúng 1 dòng bị ảnh hưởng cho mỗi entity, dễ vỡ khi
+            // dữ liệu liên quan đã lệch giữa các request).
+            await _context.VaiTroQuyens.Where(q => q.VaiTroId == id).ExecuteDeleteAsync();
+            int deletedCount = await _context.VaiTros.Where(v => v.Id == id).ExecuteDeleteAsync();
+
+            if (deletedCount == 0)
+                return NotFound(new { message = "Vai trò đã bị xóa trước đó hoặc không còn tồn tại." });
 
             return Ok(new { success = true, message = "Đã xóa vai trò thành công!" });
         }

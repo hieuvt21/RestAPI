@@ -12,20 +12,23 @@ public static class DbInitializer
         {
             if (!await context.VaiTros.AnyAsync(v => v.TenVaiTro == "Admin"))
             {
-                var adminRole = new VaiTro { TenVaiTro = "Admin", MoTa = "Toàn quyền quản trị" };
-                context.VaiTros.Add(adminRole);
+                var adminRoleSeed = new VaiTro { TenVaiTro = "Admin", MoTa = "Toàn quyền quản trị" };
+                context.VaiTros.Add(adminRoleSeed);
                 await context.SaveChangesAsync();
                 Console.WriteLine(">>> Đã tạo vai trò Admin");
             }
         }
         catch (Exception ex) { Console.WriteLine($"[LỖI] Admin role: {ex.InnerException?.Message ?? ex.Message}"); }
 
-        // --- Seed tài khoản admin ---
+        // --- Seed tài khoản admin (chỉ tạo mới nếu chưa tồn tại) ---
+        NguoiDung? adminUser = null;
         try
         {
-            if (!await context.NguoiDungs.AnyAsync(u => u.TenDangNhap == "admin"))
+            adminUser = await context.NguoiDungs.FirstOrDefaultAsync(u => u.TenDangNhap == "admin");
+
+            if (adminUser == null)
             {
-                var adminUser = new NguoiDung
+                adminUser = new NguoiDung
                 {
                     TenDangNhap = "admin",
                     MatKhauHash = BCrypt.Net.BCrypt.HashPassword("123456"),
@@ -34,18 +37,38 @@ public static class DbInitializer
                 };
                 context.NguoiDungs.Add(adminUser);
                 await context.SaveChangesAsync();
-
-                var adminRole = await context.VaiTros.FirstAsync(v => v.TenVaiTro == "Admin");
-                context.NguoiDungVaiTros.Add(new NguoiDungVaiTro
-                {
-                    NguoiDungId = adminUser.Id,
-                    VaiTroId = adminRole.Id
-                });
-                await context.SaveChangesAsync();
                 Console.WriteLine(">>> Đã tạo tài khoản admin/123456");
             }
         }
         catch (Exception ex) { Console.WriteLine($"[LỖI] Admin user: {ex.InnerException?.Message ?? ex.Message}"); }
+
+        // --- QUAN TRỌNG: Luôn đảm bảo tài khoản admin được gán vai trò Admin ---
+        // Chạy ở MỌI lần khởi động server (không chỉ lúc tạo mới), để tự sửa nếu
+        // liên kết nguoidung_vaitro của admin bị thiếu/mất vì bất kỳ lý do gì.
+        try
+        {
+            if (adminUser != null)
+            {
+                var adminRole = await context.VaiTros.FirstOrDefaultAsync(v => v.TenVaiTro == "Admin");
+                if (adminRole != null)
+                {
+                    bool daGanVaiTro = await context.NguoiDungVaiTros
+                        .AnyAsync(nv => nv.NguoiDungId == adminUser.Id && nv.VaiTroId == adminRole.Id);
+
+                    if (!daGanVaiTro)
+                    {
+                        context.NguoiDungVaiTros.Add(new NguoiDungVaiTro
+                        {
+                            NguoiDungId = adminUser.Id,
+                            VaiTroId = adminRole.Id
+                        });
+                        await context.SaveChangesAsync();
+                        Console.WriteLine(">>> Đã tự động gán lại vai trò Admin cho tài khoản admin (dữ liệu bị thiếu trước đó)");
+                    }
+                }
+            }
+        }
+        catch (Exception ex) { Console.WriteLine($"[LỖI] Gán vai trò Admin cho admin: {ex.InnerException?.Message ?? ex.Message}"); }
 
         // --- Seed 3 vai trò mặc định ---
         var defaultRoles = new[]
