@@ -7,7 +7,9 @@ public class AppDbContext : DbContext
     public DbSet<NguoiDung> NguoiDungs { get; set; }
     public DbSet<VaiTro> VaiTros { get; set; }
     public DbSet<NguoiDungVaiTro> NguoiDungVaiTros { get; set; }
-    public DbSet<VaiTroQuyen> VaiTroQuyens { get; set; } // <-- THÊM DÒNG NÀY
+    public DbSet<VaiTroQuyen> VaiTroQuyens { get; set; }
+    public DbSet<ZaloOaConfig> ZaloOaConfigs { get; set; }    
+    public DbSet<ZaloMessageLog> ZaloMessageLogs { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -5,7 +5,8 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
-
+builder.Services.AddHttpClient();
+builder.Services.AddScoped<IZaloOaService, ZaloOaService>();
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll",
