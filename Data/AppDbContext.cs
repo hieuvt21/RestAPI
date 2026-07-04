@@ -10,7 +10,7 @@ public class AppDbContext : DbContext
     public DbSet<VaiTroQuyen> VaiTroQuyens { get; set; }
     public DbSet<ZaloOaConfig> ZaloOaConfigs { get; set; }    
     public DbSet<ZaloMessageLog> ZaloMessageLogs { get; set; }
-
+    public DbSet<NhanVien> NhanViens { get; set; }
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
