@@ -113,7 +113,7 @@ public class AuthController : ControllerBase
         return Ok(new { message = "Đổi mật khẩu thành công." });
     }
 
-    // HÀM BỔ TRỢ TẠO JWT TOKEN
+    // 5 HÀM BỔ TRỢ TẠO JWT TOKEN
     private string GenerateJwtToken(NguoiDung user, List<string> roles)
     {
         var claims = new List<Claim>
@@ -145,4 +145,22 @@ public class AuthController : ControllerBase
 
         return tokenHandler.WriteToken(token);
     }
+
+// 6. XÁC THỰC MẬT KHẨU ADMIN (dùng cho các thao tác nhạy cảm: Xuất/Nhập Excel...)
+[HttpPost("verify-admin-password")]
+public async Task<IActionResult> VerifyAdminPassword([FromBody] VerifyAdminPasswordDto dto)
+{
+    if (string.IsNullOrWhiteSpace(dto.MatKhau))
+        return BadRequest(new { message = "Vui lòng nhập mật khẩu." });
+
+    var admin = await _context.NguoiDungs.FirstOrDefaultAsync(u => u.TenDangNhap == "admin");
+    if (admin == null)
+        return NotFound(new { message = "Không tìm thấy tài khoản admin trong hệ thống." });
+
+    bool isValid = BCrypt.Net.BCrypt.Verify(dto.MatKhau, admin.MatKhauHash);
+    if (!isValid)
+        return Unauthorized(new { message = "Mật khẩu Admin không chính xác." });
+
+    return Ok(new { success = true });
+}
 }

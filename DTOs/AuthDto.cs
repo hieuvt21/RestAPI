@@ -24,3 +24,7 @@ public class ChangePasswordDto
     public string MatKhauCu { get; set; } = null!;
     public string MatKhauMoi { get; set; } = null!;
 }
+public class VerifyAdminPasswordDto
+{
+    public string MatKhau { get; set; } = null!;
+}

@@ -101,8 +101,22 @@ app.MapPost("/api/khachhang", async (KhachHang model) =>
         using var conn = new SqlConnection(connectionString);
         await conn.OpenAsync();
 
-        // Trạng thái luôn được server đặt cứng là "1" (Hoạt động) khi tạo mới,
-        // không phụ thuộc vào giá trị client gửi lên.
+        // ===== KIỂM TRA TRÙNG SỐ ĐIỆN THOẠI (chỉ kiểm tra nếu có nhập SĐT) =====
+        if (!string.IsNullOrWhiteSpace(model.sdt))
+        {
+            string checkSql = "SELECT TOP 1 ten FROM khach_hang WHERE sdt = @sdt AND trang_thai = '1'";
+            using var checkCmd = new SqlCommand(checkSql, conn);
+            checkCmd.Parameters.AddWithValue("@sdt", model.sdt);
+            var existingName = await checkCmd.ExecuteScalarAsync();
+            if (existingName != null)
+            {
+                return Results.BadRequest(new
+                {
+                    message = $"Số điện thoại {model.sdt} đã tồn tại (khách hàng: {existingName}). Vui lòng kiểm tra lại."
+                });
+            }
+        }
+
         string sql = @"INSERT INTO khach_hang (ten, sdt, dia_chi, ngay_sinh, ghi_chu, trang_thai)
                        VALUES (@ten, @sdt, @dia_chi, @ngay_sinh, @ghi_chu, '1')";
         using var cmd = new SqlCommand(sql, conn);
@@ -132,6 +146,23 @@ app.MapPut("/api/khachhang/{id:int}", async (int id, UpdateKhachHangDto model) =
     {
         using var conn = new SqlConnection(connectionString);
         await conn.OpenAsync();
+
+        // ===== KIỂM TRA TRÙNG SỐ ĐIỆN THOẠI (loại trừ chính khách hàng đang sửa) =====
+        if (!string.IsNullOrWhiteSpace(model.sdt))
+        {
+            string checkSql = "SELECT TOP 1 ten FROM khach_hang WHERE sdt = @sdt AND trang_thai = '1' AND id <> @id";
+            using var checkCmd = new SqlCommand(checkSql, conn);
+            checkCmd.Parameters.AddWithValue("@sdt", model.sdt);
+            checkCmd.Parameters.AddWithValue("@id", id);
+            var existingName = await checkCmd.ExecuteScalarAsync();
+            if (existingName != null)
+            {
+                return Results.BadRequest(new
+                {
+                    message = $"Số điện thoại {model.sdt} đã được dùng bởi khách hàng khác ({existingName})."
+                });
+            }
+        }
 
         string sql = @"UPDATE khach_hang
                        SET ten = @ten, sdt = @sdt, dia_chi = @dia_chi,
@@ -182,7 +213,41 @@ app.MapDelete("/api/khachhang/{id:int}", async (int id) =>
         return Results.InternalServerError(new { message = ex.Message });
     }
 });
+// ===== API KIỂM TRA SỐ ĐIỆN THOẠI ĐÃ TỒN TẠI CHƯA (dùng cho kiểm tra tức thời khi tạo/sửa) =====
+// GET /api/khachhang/check-phone/{sdt}?excludeId=5 (excludeId dùng khi đang sửa, để bỏ qua chính nó)
+app.MapGet("/api/khachhang/check-phone/{sdt}", async (string sdt, int? excludeId) =>
+{
+    try
+    {
+        using var conn = new SqlConnection(connectionString);
+        await conn.OpenAsync();
 
+        string sql = excludeId.HasValue
+            ? "SELECT TOP 1 id, ten FROM khach_hang WHERE sdt = @sdt AND trang_thai = '1' AND id <> @excludeId"
+            : "SELECT TOP 1 id, ten FROM khach_hang WHERE sdt = @sdt AND trang_thai = '1'";
+
+        using var cmd = new SqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("@sdt", sdt);
+        if (excludeId.HasValue)
+            cmd.Parameters.AddWithValue("@excludeId", excludeId.Value);
+
+        using var reader = await cmd.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            return Results.Ok(new
+            {
+                exists = true,
+                id = Convert.ToInt32(reader["id"]),
+                ten = reader["ten"]?.ToString()
+            });
+        }
+        return Results.Ok(new { exists = false });
+    }
+    catch (Exception ex)
+    {
+        return Results.InternalServerError(new { message = ex.Message });
+    }
+});
 // Ghi chú: API vai trò/phân quyền đã được chuyển sang Controllers/RolesController.cs
 // (đường dẫn /api/roles) để khớp với giao diện Flutter (vai_tro_sub.dart).
 

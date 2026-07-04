@@ -1,5 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Microsoft.EntityFrameworkCore;
 
 [Table("nhanvien")]
 public class NhanVien
@@ -24,6 +25,7 @@ public class NhanVien
     [Column("ngay_bat_dau")]
     public DateTime? NgayBatDau { get; set; }
 
+    [Precision(18, 2)]
     [Column("luong_co_ban")]
     public decimal LuongCoBan { get; set; } = 0;
 
